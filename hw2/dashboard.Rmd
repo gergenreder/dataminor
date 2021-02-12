@@ -1,0 +1,157 @@
+---
+title: "kickstarter dashboard"
+Author: "Константин Гергенредер"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: journal
+    orientation: rows
+    social: menu
+    navbar:
+      - { title: "DataScience Minor 2019-2020", href: "https://vk.com/dsminor2k18", align: left }
+---
+
+
+```{r, echo= FALSE}
+library(flexdashboard)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+library(rpart)
+library(rpart.plot)
+library(plotly) # интерактивность
+library(DT) # работа с таблицами
+```
+```{r, echo= FALSE}
+#Очистим данные от ненужных колонок, добавим новую time (количество установленных дней на сбор средств)
+ks = read_csv("~/shared/minor2_2019/data/kickstarter.csv")
+ks = select (ks, -id, -usd_pledged)
+ks$launched = strftime(ks$launched, format = "%Y-%m-%d")
+ks = mutate(ks, time = ymd(deadline)-ymd(launched))
+#переведем goal и pledged с помощью конвертации
+
+ks$exchange_rate <- ifelse( ks$currency =="AUD",
+0.68766, 
+ifelse(ks$currency =="CAD",
+0.75912,
+ifelse(ks$currency =="CHF",
+1.0160,
+ifelse(ks$currency =="DKK",
+0.14877,
+ifelse(ks$currency =="EUR",
+1.1118,
+ifelse(ks$currency =="GBP",
+1.3325,
+ifelse(ks$currency =="HKD",
+0.12819, 
+ifelse(ks$currency =="MXN",
+0.05258, 
+ifelse (ks$currency =="NOK",
+0.11066,
+ifelse(ks$currency =="NZD",
+0.65997,
+ifelse(ks$currency =="SEK",
+0.10643,
+ifelse(ks$currency =="SGD",
+0.73900,
+1 ))))))))))))
+
+ks = mutate (ks, goal_usd = goal * exchange_rate)
+ks$goal_usd = round(ks$goal_usd, 2)
+ks = mutate (ks, pledged_usd = pledged * exchange_rate)
+ks$pledged_usd = round(ks$pledged_usd, 2)
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Количество успешных проектов кикстартера
+
+```{r}
+ks1 = filter (ks, state == "successful")
+rating <- length(ks1$state)
+gauge(rating, min = 0, max = 43335, gaugeSectors(
+  success = c(23000,43335), warning = c(10000,23000), danger = c(0, 10000)
+))
+```
+
+### Количество провальных проектов кикстартера
+
+```{r}
+ks2 = filter (ks, state == "failed")
+rating <- length(ks2$state)
+gauge(rating, min = 0, max = 43335, gaugeSectors(
+  success = c(0, 10000), warning = c(10000,23000), danger = c(23000,43335)
+))
+```
+
+Row {data-width=600, .no-padding}
+-----------------------------------------------------------------------
+
+### **График 1.** Отношение успешных проектов к провальным
+
+```{r}
+kscountry = ks %>% mutate(good = state %in% c("successful")) %>% mutate(bad = state %in% c("failed")) %>% group_by (country) %>% summarise(val = sum(good)/sum(bad))
+
+kscountry$country = str_replace (kscountry$country, "US", "USA")
+kscountry$country = str_replace (kscountry$country, "GB", "UK")
+kscountry$country = str_replace (kscountry$country, "AU", "Australia")
+kscountry$country = str_replace (kscountry$country, "AT", "Austria")
+kscountry$country = str_replace (kscountry$country, "FR", "France")
+kscountry$country = str_replace (kscountry$country, "DE", "Germany")
+kscountry$country = str_replace (kscountry$country, "BE", "Belgium")
+kscountry$country = str_replace (kscountry$country, "CA", "Canada")
+kscountry$country = str_replace (kscountry$country, "CH", "Switzerland")
+kscountry$country = str_replace (kscountry$country, "DK", "Denmark")
+kscountry$country = str_replace (kscountry$country, "ES", "Spain")
+kscountry$country = str_replace (kscountry$country, "HK", "Hong Kong")
+kscountry$country = str_replace (kscountry$country, "IE", "Ireland")
+kscountry$country = str_replace (kscountry$country, "IT", "Italy")
+kscountry$country = str_replace (kscountry$country, "LU", "Luxembourg")
+kscountry$country = str_replace (kscountry$country, "MX", "Mexico")
+kscountry$country = str_replace (kscountry$country, "NL", "Netherlands")
+kscountry$country = str_replace (kscountry$country, "NO", "Norway")
+kscountry$country = str_replace (kscountry$country, "NZ", "New Zealand")
+kscountry$country = str_replace (kscountry$country, "SE", "Sweden")
+kscountry$country = str_replace (kscountry$country, "SG", "Singapore")
+world_map <- map_data("world")
+kscountry.map <- left_join(world_map, kscountry, by = c("region" = "country") )
+
+a <- ggplot(kscountry.map, aes(long, lat, group = group))+
+geom_polygon(aes(fill = val ), color = "white")+
+labs(fill = "Отношение", title = "", x="", y="") +
+  theme_bw() +
+  theme (axis.text.y=element_blank(),axis.text.x=element_blank(),
+                                        axis.line.y=element_blank(),
+                                        axis.ticks.y=element_blank(),
+                                        axis.title.y=element_blank(),
+                                        axis.line.x=element_blank(),
+                                        axis.ticks.x=element_blank(),
+                                        axis.title.x=element_blank())+
+scale_fill_viridis_c(option = "C")
+gg <- ggplotly(a)
+gg
+```
+
+### **График 2.** Дерево принятия решений
+
+```{r}
+tree1 <- rpart(state ~ main_category + goal_usd + time +backers, method = "class", data = ks)
+prp(tree1, extra = 4)
+```
+
+
+Row {}
+-----------------------------------------------------------------------
+
+### Общее количество проектов
+```{r}
+valueBox("43335", color = "#fcf7f2", icon = "fa-table")
+```
+
+### Количество собранных средств по всем проектам (млн. $)
+```{r}
+valueBox(round(sum(ks$pledged_usd)/1000000, 0), color = "#fcf7f2", icon = "fa-usd")
+```

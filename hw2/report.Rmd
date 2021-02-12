@@ -1,0 +1,322 @@
+---
+title: 'Домашняя работа #2'
+author: '*Константин Гергенредер, группа номер 3*'
+date: "28.10.2019"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+<center> [![Alt text](https://i.imgur.com/CebjKkZ.png)](https://vk.com/dsminor2k18) </center>
+--------------
+```{r global, include = FALSE, warning=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r, echo= FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+library(rpart)
+library(rpart.plot)
+library(plotly) # интерактивность
+library(DT) # работа с таблицами
+```
+
+```{r, echo= FALSE}
+#Очистим данные от ненужных колонок, добавим новую time (количество установленных дней на сбор средств)
+ks = read_csv("~/shared/minor2_2019/data/kickstarter.csv")
+ks = select (ks, -id, -usd_pledged)
+ks$launched = strftime(ks$launched, format = "%Y-%m-%d")
+ks = mutate(ks, time = ymd(deadline)-ymd(launched))
+#переведем goal и pledged в доллары с помощью конвертации
+ks$exchange_rate <- ifelse( ks$currency =="AUD",
+0.68766, 
+ifelse(ks$currency =="CAD",
+0.75912,
+ifelse(ks$currency =="CHF",
+1.0160,
+ifelse(ks$currency =="DKK",
+0.14877,
+ifelse(ks$currency =="EUR",
+1.1118,
+ifelse(ks$currency =="GBP",
+1.3325,
+ifelse(ks$currency =="HKD",
+0.12819, 
+ifelse(ks$currency =="MXN",
+0.05258, 
+ifelse (ks$currency =="NOK",
+0.11066,
+ifelse(ks$currency =="NZD",
+0.65997,
+ifelse(ks$currency =="SEK",
+0.10643,
+ifelse(ks$currency =="SGD",
+0.73900,
+1 ))))))))))))
+
+ks = mutate (ks, goal_usd = goal * exchange_rate)
+ks$goal_usd = round(ks$goal_usd, 2)
+ks = mutate (ks, pledged_usd = pledged * exchange_rate)
+ks$pledged_usd = round(ks$pledged_usd, 2)
+```
+
+## **Структура исследования проектов платформы kickstarter.com**
+#### 1. Зависит ли день недели открытия сбора средств на его успех? В какой день недели лучше запускать сбор средств?
+#### 2. Как зависит успешность проекта от выбранной категории?
+#### 3. Какие категории продуктов собрали больше всего средств?
+#### 4. Тепловая карта отношения успешных проектов к провальным по странам мира.
+#### 5. Дерево принятия решений на основе данных исследования.
+#### 6. Генерализация и переобучение на основе данных кикстартера.
+#### 7. Статистические тесты.
+
+> <p align="justify">Примечание: Возможность выбора конкретной категории заказчиком условно не предполагается. Данный анализ разрабатывается с целью оценить шансы отдельного проекта, а не выбрать наиболее перспективную категорию для вложения средств. Исследователь считает нецелесообразным рекомендовать заказчику сферу деятельности, так как у заказчика на момент обращения должна быть конкретная сфера интересов, в которой он будет реализовывать свой продукт. </p>
+
+--------------
+## **Первый вопрос.** Зависит ли день недели открытия сбора средств на его успех? В какой день недели лучше запускать сбор средств?
+<p align="justify">Немаловажным фактором успешности проекта может стать день старта сбора средств. Действительно, в определенные дни, к примеру, когда люди более расслабленны от работы - они готовы пожертвовать больше средств. Так ли это на самом деле? Разберемся в результатах исследования.</p>
+
+<center>
+```{r, echo= FALSE}
+ks %>% filter(state %in% c("successful","failed")) %>% 
+  mutate(month=wday(launched,label = T)) %>% 
+  group_by(month,state,main_category) %>% 
+  summarise(total=n()) %>% 
+  ggplot(aes(x=month,y=total,fill=state))+
+  geom_col(position = "dodge")+theme_bw()+
+  ylab("Количество проектов")+
+  xlab("День недели")+
+  labs(title="График 1. Зависимость успеха проекта от даты запуска", subtitle= "Разделение по категориям")+
+  theme(legend.position = "top")+
+  scale_fill_brewer(palette = "Pastel1")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  facet_wrap(~main_category)
+```
+</center>
+> #### **Промежуточный вывод по графику:**
+<p align="justify"> На основе созданных графиков можно сделать вывод, что свой проект на платформе kickstarter лучше запускать во вторник, так как в этот день люди готовы вкладывать в проекты более активно, чем в остальные дни. Из этого можно сделать вывод, что дата открытия сбора средств является одним из факторов успеха проекта. <p>
+
+--------------
+## **Второй вопрос.**  Как зависит успешность проекта от выбранной категории?
+<p align="justify">текст.</p>
+<center>
+```{r, echo= FALSE}
+ks1 <- ks %>%
+  group_by(main_category, state) %>%
+  select(goal_usd, pledged_usd, backers) %>%
+  summarise(coun=n()) %>%
+  mutate(procent = coun/sum(coun)) %>%
+  filter(state == "successful") %>%
+  arrange(desc(procent))
+
+
+  ggplot(ks1, aes(x = reorder(main_category, -procent), y = round(procent*100, digits = 1)), color = "Set3")+
+  geom_bar(stat = "identity",fill="#f6b93b")+
+  theme_bw()+
+  geom_text(aes(label=round(procent*100, digits = 1)), position=position_dodge(width=1), vjust=-0.1)+
+  labs(y="Success %", x="Main Category", title="Successful project % by Main Category")+
+  ylab("Процент успешности проекта")+
+  xlab("Категория проекта")+
+  labs(title="График 2. Успех проекта в зависимости от категории")+
+  theme(axis.text.x = element_text(angle=60, hjust=1))
+```
+</center>
+> #### **Промежуточный вывод по графику:**
+<p align="justify"> Проведя исследование доступных нам данных, я определил категории проектов, у которых процент успешности является наибольшим. Такими проектами являются проекты в категориях: комиксы (69%), танцы (62.9%) и театр (60.4%). Это может быть связано с тем, что все эти три категории так или иначе связаны с развлечением и известными группами или авторами, что снижает процент риска. Немало важным фактором может являться известность издателя, группы или исполнителя. Именно поэтому эти категории являются наиболее привлекательными для спонсоров.<p>
+
+--------------
+## **Третий вопрос.** Какие категории продуктов собрали больше всего средств?
+<p align="justify">Текст.</p>
+<center>
+```{r, echo= FALSE}
+ks2 <- ks %>%
+  group_by(main_category, state) %>%
+  select(goal_usd, pledged_usd, backers) %>%
+  summarise(summa=sum(pledged_usd)) %>%
+  filter(state == "successful") %>%
+  arrange(desc(summa))
+  ks21 <- head(ks2, 10)
+ 
+ggplot(ks21, aes(x = reorder(main_category, -summa), y = round(summa/1000, digits = 0))) +
+  geom_bar(stat = "identity", fill="#f6b93b")+theme_bw()+
+  theme(axis.text.x = element_text(angle=60, hjust=1)) + 
+  geom_text(aes(label=round(summa/1000, digits = 0)), position=position_dodge(width=1), vjust=-0.1)+
+  ylab("Собранные деньги (тыс. долл. США)")+
+  xlab("Категория проекта")+
+  labs(title="График 3. Рейтинг категорий проектов по сбору средств")
+```
+</center>
+> #### **Промежуточный вывод по графику:**
+<p align="justify"> Проведя исследование доступных нам данных, я определил лучшие проекты по собранным средствам. Такими стали проекты в сфере Дизайна, Игр и Технологий. Вывод - пользователи кикстартера заинтересованы в этих категориях и готовы вкладывать в них деньги.<p>
+
+--------------
+## **Четвертый вопрос.** Тепловая карта стран мира по количеству проектов.
+<p align="justify">Текст.</p>
+<center>
+```{r, echo = FALSE}
+kscountry = ks %>% mutate(good = state %in% c("successful")) %>% mutate(bad = state %in% c("failed")) %>% group_by (country) %>% summarise(val = sum(good)/sum(bad))
+
+kscountry$country = str_replace (kscountry$country, "US", "USA")
+kscountry$country = str_replace (kscountry$country, "GB", "UK")
+kscountry$country = str_replace (kscountry$country, "AU", "Australia")
+kscountry$country = str_replace (kscountry$country, "AT", "Austria")
+kscountry$country = str_replace (kscountry$country, "FR", "France")
+kscountry$country = str_replace (kscountry$country, "DE", "Germany")
+kscountry$country = str_replace (kscountry$country, "BE", "Belgium")
+kscountry$country = str_replace (kscountry$country, "CA", "Canada")
+kscountry$country = str_replace (kscountry$country, "CH", "Switzerland")
+kscountry$country = str_replace (kscountry$country, "DK", "Denmark")
+kscountry$country = str_replace (kscountry$country, "ES", "Spain")
+kscountry$country = str_replace (kscountry$country, "HK", "Hong Kong")
+kscountry$country = str_replace (kscountry$country, "IE", "Ireland")
+kscountry$country = str_replace (kscountry$country, "IT", "Italy")
+kscountry$country = str_replace (kscountry$country, "LU", "Luxembourg")
+kscountry$country = str_replace (kscountry$country, "MX", "Mexico")
+kscountry$country = str_replace (kscountry$country, "NL", "Netherlands")
+kscountry$country = str_replace (kscountry$country, "NO", "Norway")
+kscountry$country = str_replace (kscountry$country, "NZ", "New Zealand")
+kscountry$country = str_replace (kscountry$country, "SE", "Sweden")
+kscountry$country = str_replace (kscountry$country, "SG", "Singapore")
+world_map <- map_data("world")
+kscountry.map <- left_join(world_map, kscountry, by = c("region" = "country") )
+
+a <- ggplot(kscountry.map, aes(long, lat, group = group))+
+geom_polygon(aes(fill = val ), color = "white")+
+labs(fill = "Отношение", title = "График 4. Отношение успешных проектов к провальным", x="", y="") +
+  theme_bw() +
+  theme (axis.text.y=element_blank(),axis.text.x=element_blank(),
+                                        axis.line.y=element_blank(),
+                                        axis.ticks.y=element_blank(),
+                                        axis.title.y=element_blank(),
+                                        axis.line.x=element_blank(),
+                                        axis.ticks.x=element_blank(),
+                                        axis.title.x=element_blank())+
+scale_fill_viridis_c(option = "C")
+gg <- ggplotly(a)
+gg
+```
+</center>
+> #### **Промежуточный вывод по графику:**
+<p align="justify"> Данный интерактивный график показывает отношение успешных проектов к провальным по странам мира. Несмотря на выбросы данных в США, показатели распределились равномерно. Явным фаворитом является Дания, так как показатель в этой стране превышает единицу, что означает преобладание успешных проектов над провальными.<p>
+
+--------------
+## **Пятый вопрос.** Дерево принятия решений на основе данных исследования.
+<center>
+```{r, echo = FALSE}
+tree1 <- rpart(state ~ main_category + goal_usd + time +backers, method = "class", data = ks)
+prp(tree1, extra = 4)
+```
+</center>
+```{r}
+# Проверка качества модели
+pred = predict(tree1, type="class")
+
+t = table(ks$state, pred)
+t
+# accuracy
+(t[1,1] + t[2,2])/sum(t)
+
+ks$predicted = pred
+source("~/shared/minor2_2019/1-Intro/lab09-gini-trees/compute_gini.R") # загружаем функцию Джини
+gini_split(data = ks, real = state, predicted = predicted)
+```
+
+> #### **Вывод по дереву решений:**
+<p align="justify"> Категория backers является важным фактором успешности проекта. Так как изначально мы ее не знаем, заказчик может оценить шансы своего действующего проекта, основываясь на даннном дереве принятия решений.
+Точность модели - 0.905, коэфициент Джини - 0.167 (чем меньше, тем лучше).<p>
+
+--------------
+
+## **Шестой вопрос.** Генерализация и переобучение на основе данных кикстартера.
+```{r}
+ks$id = 1:nrow(ks)
+# "зерно" для генератора случайных чисел
+set.seed(12345) 
+
+# Возьмем 80% как обучающие
+train = ks %>% dplyr::sample_frac(.8)
+
+# Создаем тестовый набор данных
+# Через анти-джойн, чтобы убрать все наблюдения, попавшие в обучающую выборку
+test = dplyr::anti_join(ks, train, by = 'id') %>% dplyr::select(-id, -name, -launched, -deadline)
+train = train %>% dplyr::select(-id, -name, -launched, -deadline)
+```
+
+<center>
+```{r,echo=FALSE}
+# Построим дерево из предыдущего шага
+tree2 <- rpart(state ~  main_category + goal_usd + time +backers, method = "class", data = train)
+prp(tree2, extra=4)
+```
+</center>
+
+```{r}
+#посмотрим предсказания для новых данных -- не забываем указывать тип предсказания
+pred = predict(tree2, type="class")
+
+#матрица смежности
+t = table(pred, train$state)
+t
+(t[1,1] + t[2,2])/sum(t)
+```
+
+
+```{r}
+# Тестовая модель
+pred2 = predict(tree2, test, type="class")
+
+## Accuracy на тестовой
+t = table(pred2, test$state)
+t
+(t[1,1] + t[2,2])/sum(t)
+```
+
+
+```{r}
+# **Проблема переобучения.** Для её решения используется оценка дерева на каждом уровне с помощью кроссвалидации -- перебираются варианты с разными значениями параметра, регулирующего глубину дерева, выбирая то значение, при котором ошибка становится минимальной.
+tree3 <- rpart(state ~ main_category + goal_usd + time +backers, method = "class", data = ks, cp= 0.001)
+
+
+knitr::kable(as.data.frame(tree3$cptable)) # cp = 0.0001628	, xerror = 0.1730425|
+```
+
+> #### **Вывод по генерализации и переобучению модели:**
+<p align="justify"> Точность тестовой - 0.907
+Точность тренировочной - 0.905
+cp = 0.0001628
+xerror = 0.1730425 <p>
+
+--------------
+
+## **Седьмой вопрос.** Статистические тесты.
+
+###  1. Существует ли статистически значимое различие категории *проекта* и тем, в какой стране он был запущен?
+```{r}
+ch <- chisq.test(ks$main_category, ks$country)
+ch
+```
+> Вывод по 1: pvalue M 2.2 e-16  ---- Согласно результатам хи-квадрата, наблюдается статистически значимое различие между категорией проекта и страной.
+
+###  2. Существует ли статистически значимое различие количества донатеров от успешности проекта?
+```{r}
+t.test(backers~state, data = ks)
+```
+> Вывод по 2: pvalue M 2.2 e-16  ---- Согласно результатам ти-теста, наблюдается статистически значимое различие между количеством донатеров и успешностью проекта.
+
+--------------
+# Заключительный вывод проведённого анализа.
+<p align="justify">На основе проведённого анализа, представленного для владельца будущего проекта на кикстартере, я бы хотел привести ряд рекомендаций для потенциального заказчика:
+
+* По возможности начинать сбор средств в среду
+* Обратить внимание на такие категории проектов, как комиксы, танцы и театр. Именно эти категории являются наиболее успешными среди остальных.
+* Обратить внимание на такие категории проектов, как игры, дизайн и технологии. Эти категории обладают наибольшим процентом вложений.
+* Начинать сбор средств в Дании - в этой стране отношение успешных проектов к неуспешным больше единицы - значит, количество успешных проектов больше, чем провальным.
+* Обратить внимание на количество донатеров, так как данное значение является одним из самых важных факорово успешности проекта. Исходя из дерева решений, заказчик может оценить свои шансы на успех.
+
+<p>
+--------------
+<center>Data Science Minor 2019-2020</center>
+
