@@ -1,0 +1,733 @@
+---
+title: 'Проект рекомендательной системы: фильмы'
+author: 'Турченко Федя, Нездоймышапко Мила, Гергенредер Костя, Макеев Артем'
+date: "Группа 12"
+output:
+  prettydoc::html_pretty:
+    theme: hpstr
+  pdf_document: default
+  word_document: default
+---
+```{r global, include = FALSE, warning=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE)
+```
+
+<center> [![Alt text](https://i.imgur.com/CebjKkZ.png)](https://vk.com/dsminor2k18) </center>
+
+```{r}
+
+library(prettydoc) # пакет для темы, если не работает - скачать в CRAN. Если совсем все плохо - удалить строчку prettydoc::html_pretty: и theme: hpstr, заменить на   html_document: default
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(igraph)
+library(plotly)
+library(visNetwork)
+library(tidyverse)
+library(igraph)
+library(tnet)
+library(ggpubr)
+library(recommenderlab)
+library(DT) # работа с таблицами
+
+load("~/data12.rda")
+add_data = read.csv("~/tmdb_movies_data.csv", encoding = "WINDOWS-1251")
+library(dplyr)
+library(tidytext)
+library(stringr)
+library(textstem)
+library(syuzhet)
+library(stats)
+library(ggpubr)
+library(tidyverse)
+```
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+movies12 = movies12 %>% rename(movieId = id)
+```
+--------------
+
+# Основные идеи
+
+<p align="justify"> <li> Проект позиционируется как проведение некого анализа для конкретного заказчика. В лице заказчика может выступать интернет-портал по рекомендациям фильмов, онлайн кинотеатры, а так же различные информационные источники с описаниями фильмов (к примеру, kinopoisk).</li>
+<li> В основе создания рекомендательной системе - простота и прозрачность работы. Мы поставили перед собой цель сделать простую, но качественную систему, принцип работы которой будет потянет простому пользователю, а результат рекомендации будет наилучшим. </li>
+<li> Основная идея рекомендации - предложение фильмов на основе "житейского опыта". Поэтому для рекомендации мы используем то, на что обычно обращаем внимание при выборе фильма, а именно жанр, топ-3 актера, главный режиссер, ключевые слова.</li> </p>
+
+--------------
+
+# План проекта:
+>### I. Первичный анализ данных
+### II. Анализ сетевых данных и их интерпретация
+### III. Анализ текстовых данных и их интерпретация
+### IV. Построение рекомендательной системы
+### V. Построение рекомендательных систем - коллаборативная фильтрация
+### VI. Практические выводы
+### VII. Ответы на вопросы и комментарии, полученные в отзывах
+
+--------------
+
+# I. Первичный анализ данных
+### В данном разделе мы подробнее разберём данные для проекта, проанилизируем, от чего может зависеть средняя оценка фильма. 
+
+<p align="justify"> Проверим, есть ли зависимость между среднеми оценками для жанров.В некоторых жанрах недостаточно наблюдений для проведения статистических тестов, а также данные по жанрам распределены неравномерно, что не даёт нам возможности использовать ANOVA. Однако мы можем использовать непараметрический аналог, например, Kruskall-Wallis для проверки зависимости, так как он не требует для себя никаких предположений.</p>
+
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+# загрузим функцию
+source("~/extract_json.R")
+# заменим тип кавычек 
+movies12$genres = str_replace_all(movies12$genres, fixed("'"), '"')
+# запустим функцию, которая преобразует строку в отдельные жанры
+movies_with_genres1 = extract_json2(df = movies12, col = "genres")
+```
+
+$H_0$: - Разницы между средним значение для жанров нет
+
+$H_A$: - Разница в средним значение для жанров есть
+
+```{r}
+kruskal.test(movies_with_genres1$vote_average ~ movies_with_genres1$genres_sep)
+```
+
+<p align="justify"> Как видно из итогов теста, p-value меньше чем 0.05, что даёт нам возможность отрицать нулевую гипотезу. Таким образом, среднее значение оценки отличается для жанров. Таким образом, средняя оценка для фильма может зависеть от жанра, поскольку они отличаются для разных категорий жанров. То есть жанр является важной характеристикой для определения того, какая средняя оценка стоит у фильма и для того чтобы рекомедовать людям фильмы.  </p>
+
+**Корелляция**
+<p align="justify"> Теперь посмотрим на корреляцию средней оценки с различными численными переменными. Будем использовать метод Kendall, поскольку для большинства переменных распределение не нормальное. Итогом корреляционного анализа была выявлена наиболее сильная связь. </p>
+<p align="justify"> Проверим есть ли зависимость между оценкой популярности фильма и его среднюю оценку. 
+```{r}
+cor.test (movies12$popularity, movies12$vote_average, method = "kendall" )
+```
+Зависимость между популярностью фильмы и его средней оценкой существует, чем больше популярность фильма, тем выше его оценка. Тем не менее она очень слабая, так как коэффициент равен 0,23. Результат статистически значим. Однако в рекомендации мы тем не менее можем полагаться на популярность фильма, как на переменную способную подобрать наиболее значимые фильмы (как, например, в сетевом анализе) </p>
+<p align="justify"> Проверим есть ли зависимость средней оценки с количеством оценок. 
+
+```{r}
+cor.test (movies12$vote_count, movies12$vote_average, method = "kendall" )
+```
+
+Достаточно логично, количество проголосовавших влияет на среднюю оценку фильма. Корреляция всё ещё слабая, потому что коэффициент равен 0,27. Она положительная, то есть чем больше у фильма оценок, тем выше может быть его средняя оценка. Результат статистически значим, p-value меньше 0.05. 
+В системах мы будем отбирать фильмы, у которых будет больше определенного количества оценок, чтобы результат был более надёжным, а оценка фильма не была занижена из-за отсутствия оценок.  </p>
+
+<p align="justify"> Проверим корреляцию между переменными, которые сильнее всего были связаны с средней оценкой, так как количество оценок фильма может зависет от его популярности. 
+
+```{r}
+cor.test (movies12$popularity, movies12$vote_count, method = "kendall" )
+```
+
+Действительно, корреляция между количеством оценок и его популярностью очень сильная, коэффициент равен 0.72. Результат статистически значим, так как p-value меньше 0.05. </p>
+
+--------------
+
+# II. Анализ сетевых данных и их интерпретация
+### В данном разделе мы ознакомимся с результатами сетевого анализа данных и проинтепретируем их.
+
+```{r}
+network <- movies_with_genres1 %>% 
+  dplyr::select(movieId, genres_v, genres_sep)
+```
+```{r echo = FALSE}
+#Подготовим данные для сети.
+
+
+network  = network  %>% spread(key = genres_sep, value = genres_v, fill = 0)
+
+rownames(network ) <- str_c("id", network$movieId, sep = "_")
+
+network  = network %>% dplyr::select(-movieId) %>% as.matrix()
+```
+
+```{r}
+# Наш граф является двудольным, поскольку в сети есть два типа узлов - фильмы и жанры.
+
+g <- graph_from_incidence_matrix(network)
+```
+ 
+<p align="justify">Делаем проекцию, где связь между фильмами будет отображать наличие общего жанра. </p>
+
+```{r}
+pr = bipartite.projection(g) 
+ 
+p <- pr[[1]]
+p
+```
+
+<p align="justify">Будем использовать взвешенную проекцию, которая будет взвешивать силу связи между фильмами на популярность жанра. Связь между непопулярными жанрами будет сильнее. Взвешиваем и строим распределение силы связи между фильмами с указанием среднего. Также сохраняем в отдельный датасет соответствие id фильма и порядковый номер. </p>
+
+```{r}
+movies_id <- rownames(network)
+df <- data.frame(movie12 = str_replace(movies_id, "id_", ""), i = 1:nrow(network ), stringsAsFactors = F)
+```
+
+Создадим взвешенную проекцию. i и j в данном случае являются связью между фильмами, w - весом связи.
+
+```{r}
+p = projecting_tm(network, method="Newman")
+head(p)
+```
+
+
+```{r}
+# Заменим порядковые номера на id фильмов
+
+p = left_join(p, df, by = "i")
+p = p %>% rename(movie_1 = movie12)
+p = left_join(p, df, by = c("j"="i")) %>% rename(movie_2 = movie12)
+```
+
+```{r}
+#И изменим порядок, так как список ребёр должен быть в первых столбцах.
+
+p = dplyr::select(p, movie_1, j = movie_2, w)
+```
+ 
+```{r}
+p1 = filter(p, w >= 0.02) %>% select(-w) 
+ 
+set.seed(483)
+ 
+net1 <- simplify(graph_from_edgelist(as.matrix(p1), directed=F))
+V(net1)$color <- "steel blue"
+V(net1)$label <- NA
+ 
+#plot(net1, vertex.label.color = "black", vertex.size = 3, layout = layout.kamada.kawai(net1))
+```
+
+```{r}
+p1 = filter(p, w >= 0.05) %>% select(-w) 
+set.seed(483)
+ 
+net2 <- simplify(graph_from_edgelist(as.matrix(p1), directed=F))
+V(net2)$color <- "pink"
+V(net2)$label <- NA
+ 
+#plot(net2, vertex.label.color = "black", vertex.size = 3, layout = layout.kamada.kawai(net1))
+```
+
+Удалим свзяи у которых сила ниже 0.02 и сделаем более сильную фильтрацию, разобъём фильмы на сообщества. 
+
+```{r}
+com = walktrap.community(net2)
+plot(com, net2, layout = layout.kamada.kawai(net1), 
+     vertex.label.color = "black", vertex.size = 3,)
+```
+
+<p align="justify">В целом сообщества в данном случае отображают фильмы, которые относятся к похожим жанрам. Как видно из графа, у нас всё равно остаются фильмы, которые не связаны между собой и находятся вне сообществ. Возможно, эти фильмы отличаются по жанрам от большинства оставшихся фильмов, относятся к нераспространённому жанру. </p>
+
+```{r}
+#length(V(net2)$name) # в графе осталось 139 фильмов из 487 исходных. Посмотрим, какие фильмы остались
+
+movies_net = movies12 %>% select(movieId, title, popularity, genres) %>%
+  inner_join(data.frame(movieId = as.numeric(V(net2)$name)))
+```
+
+<p align="justify">Теперь зная понравившиеся пользователю фильмы, можем предлагать ему фильмы из данного сообщества. Допустим нашему пользователю нравится фильм "Star Trek V: The Final Frontier".</p>
+
+```{r}
+id = movies12$movieId[movies12$title == "Star Trek V: The Final Frontier"]
+```
+
+
+Определяем сообщество фильма и выводим фильмы данного сообщества, отсортированные по популярности.
+
+```{r}
+groups = membership(com)
+target_group = groups[as.character(id)]
+```
+
+```{r}
+members = data.frame(movieId = as.numeric(names(groups)),
+                     group = as.numeric(groups))
+movies_net %>% inner_join(members) %>% 
+  filter(group == target_group) %>% arrange(-popularity)
+```
+              
+<p align="justify">Как видно из полученной таблицы, в одном сообществе находятся похожие фильмы по жанру. В данном случае жанр играет значимую роль, поскольку можно заметить, что не только жанр совпадает, но и фильмы в целом являются похожими на фильм, который нравится нашему пользователю. Также в сообществе есть как популярные фильмы, так и не очень, что означает, что даже если пользователь уже видел фильмы, которые более популярны его любимого фильма, то он также может посмотреть менее популярные фильмы, но похожие на понравившийся ему.
+
+В целом можно сказать, что жанр является важной характеристикой для того чтобы рекомендовать людям фильмы, однако сам сетевой анализ в рекомендательных системах мы использовать не будем.</p>
+
+--------------
+
+# III. Анализ текстовых данных и их интерпретация
+### В данном разделе мы ознакомимся с результатами текстового анализа данных и проинтепретируем их.
+
+<p align="justify"> 
+```{r message=FALSE, warning=FALSE, include=FALSE}
+load("~/data12.rda")
+add_data = read.csv("~/tmdb_movies_data.csv", encoding = "WINDOWS-1251")
+library(dplyr)
+library(tidytext)
+library(stringr)
+library(textstem)
+library(syuzhet)
+library(stats)
+library(ggpubr)
+library(tidyverse)
+```
+
+```{r, echo = FALSE}
+# Подготавливаю датасет для текстового анализа:
+movies_cb = movies12 # создаю отдельный датасет для content-based системы, чтобы оставить исходник
+movies_cb$overview = str_replace_all(movies_cb$overview, "[:punct:]+", " ") # заменяю пунктуацию на пробел
+movies_cb$overview = str_replace_all(movies_cb$overview, " ", " ") # удаляю лишние пробелы
+movies_cb$overview = tolower(movies_cb$overview) # привожу к нижнему регистру
+
+movies_cb$lem = movies_cb$overview %>% lemmatize_strings() # леммматизация
+
+stopwords = data.frame(words=stopwords::stopwords("en"), stringsAsFactors=FALSE) # загружаю английские стоп-слова
+movies_cb_tidy = movies_cb %>% unnest_tokens(words, lem) %>% anti_join(stopwords) %>% filter(!str_detect(words, "[[:digit:]]")) # делю тексты на токены, удаляю стоп-слова, фильтрую датасет, чтобы убрать числа
+
+words_count = movies_cb_tidy %>% dplyr::count(words) 
+words_count = words_count %>% filter(n > mean(words_count$n) & n < quantile(words_count$n, 0.95)) # удаляю слишком редкие и слишком распространенные слова
+
+movies_cb_tidy = movies_cb_tidy %>% filter(words %in% words_count$words) # оставляю в tidy датасете слова в соответствии с фильтрацией выше
+```
+
+**Семантический анализ**
+
+Идея заключалась в том, чтобы проверить корреляцию между эмоциональностью описаний (установленную по семантическому анализу) и оценкой фильма. Логика тут состояла в том, что, теоретически, более эмоционально яркие описания к фильмам могут быть у более качественных картин в принципе. Визуализация:
+
+
+Итог таков, что корреляция незначительная, соответственно, описания фильмов с точки зрения семантики никак не влияют на оценки пользователей. Для рекомендательной системы использовать это не будем.
+```{r, include=FALSE}
+options(scipen=999) # нужно, чтобы числа в аутпуте высветились без e+/-..
+
+get_sentiment_dictionary() # подгружаю словарь
+movies_cb_tidy$value = get_sentiment(movies_cb_tidy$words, method = "syuzhet", lexicon = NULL) # присваиваю семантические значения словам
+
+movies_cb_sent = movies_cb_tidy %>% dplyr::group_by(id) %>% dplyr::summarise(mean = mean(value)) # средние значения по семантике для каждого описания
+movies_cb = movies_cb %>% inner_join(movies_cb_sent) # получившуюся колонку переношу в начальный датасет
+movies_cb$mean = round(movies_cb$mean, digits = 3) # округление (по сути просто для красоты)
+
+```
+```{r}
+ggscatter(movies_cb, x = "vote_average", y = "mean", add = "reg.line", add.params = list(color = "blue", fill = "lightgray"), cor.coef = TRUE, title = "Зависимость между среднему значению эмоциональности\nописаний фильмов и их средней оценкой", ylab = "Среднее значение эмоциональности\nописания фильма 
+по семантическому словарю", xlab = "Средняя оценка фильма")
+```
+--------------
+
+# IV. Построение рекомендательных систем - content-based
+### Построение рекомендательной системы по признакам (content-based)
+
+<p align="justify">В качестве признаков были использованы жанр, топ-3 актера, главный режиссер, ключевые слова. Именно такие переменные были отобраны, исходя из common sense. Думаю, что большинство людей при выборе себе фильма на просмотр так или иначе, но обращают в первую очередь внимание именно на эти признаки, поскольку они являются "лицом" фильма. </p>
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# Подготовка дополнительных данных непосредственно для content-based системы:
+
+movies_cbs = movies12 # датасет для рекомендательной системы
+movies_cbs = movies_cbs %>% rename(movieId = id)
+data = ratings12 %>% group_by(movieId) %>% summarize(rating = mean(rating, na.rm = T))
+data = inner_join(data, movies_cbs)
+
+add_data = add_data %>% dplyr::select(keywords, cast, director, original_title) # оставляю только нужные переменные
+data = inner_join(data, add_data) # соединяю с датасетом по доп данным
+
+data_tidy = data %>% dplyr::select(movieId, rating, genres, keywords, cast, director, original_title) # очищенный датасет с только необходимыми колонками
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# Подготовка колонки genres:
+  
+source("~/extract_json.R")
+data_tidy$genres = str_replace_all(data_tidy$genres, fixed("'"), '"') # заменим тип кавычек (иначе функция не разбирает строку правильно)
+data_tidy2 = extract_json2(df = data_tidy, col = "genres") # запустим функцию, которая преобразует строку в отдельные жанры
+data_tidy2 = data_tidy2 %>% spread(key = genres_sep, value = genres_v, fill = 0)
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#Подготовка колонки keywords. В данном чанке провожу лемматизацию, удаляю слишком редкие слова:
+
+data_tidy2$keywords = str_replace_all(data_tidy2$keywords, "[:punct:]+", " ")
+data_tidy2$keywords = str_replace_all(data_tidy2$keywords, " ", " ")
+data_tidy2$keywords = tolower(data_tidy2$keywords)
+data_tidy2$lem = data_tidy2$keywords %>% lemmatize_strings()
+
+stopwords = data.frame(words=stopwords::stopwords("en"), stringsAsFactors=FALSE)
+data_tidy_lem = data_tidy2 %>% unnest_tokens(words, lem) %>% anti_join(stopwords) %>% filter(!str_detect(words, "[[:digit:]]"))
+
+words_count2 = data_tidy_lem %>% dplyr::count(words) 
+words_count2 = words_count2 %>% filter(n > 1) # удаляю слишком редкие слова
+
+data_tidy_lem = data_tidy_lem %>% filter(words %in% words_count2$words) # оставляю в tidy датасете слова в соответствии с фильтрацией выше
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# Продолжаю работать с переменной keywords:
+
+data_tidy_lem %>% dplyr::mutate_if(is.factor, as.character) -> data_tidy_lem # преобразую факторные переменные в текстовые
+data_tidy_lem = data_tidy_lem %>% select(-keywords)
+
+data_tidy_lem = data_tidy_lem %>% cbind(words_v = 1)
+data_spread_keywords = data_tidy_lem %>% select(movieId, words, words_v)
+data_spread_keywords = data_spread_keywords %>% group_by(movieId) %>% mutate(grouped_id = row_number()) %>% spread(words, words_v, fill = 0) %>% select(-grouped_id, -director)
+data_tidy_lem = data_tidy_lem %>% select(-words, -words_v)
+data_tidy_lem = inner_join(data_spread_keywords, data_tidy_lem)
+data_tidy_lem = data_tidy_lem %>% select(-genres)
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# Теперь необходимо выделить топ-3 актера из каждого каста. Обычно актеры ведущих ролей записываются в первую очередь, и именно они становятся лицом фильма для зрителя.
+
+movies_cbs_tidy = data_tidy_lem
+
+# Заменяю вертикальные палочки на запятые, чтобы впоследствие применить separate_rows()
+
+movies_cbs_tidy2 = movies_cbs_tidy %>% unnest(cast = strsplit(cast, "[|]"))
+movies_cbs_tidy3 = movies_cbs_tidy2 %>% group_by(movieId) %>% summarise(cast=paste(cast, collapse=","))
+movies_cbs_tidy = movies_cbs_tidy %>% select(-cast)
+movies_cbs_tidy = inner_join(movies_cbs_tidy3, movies_cbs_tidy)
+
+
+# - Привожу к нижнему регистру, убираю пробелы, чтобы записать имя и фамилию актера (плюс возможные приставки а-ля Jr.) в одно слово
+# - Далее создаю новую колонку, в которой оставляю только паттерн "первые 3 слова, отделенные запятой в конце"
+# - После предыдущего шага в конце каждой последовательности останется запятая - строчкой 107 убираю ее
+# - Убираю изначальную колонку cast, а также строки, где в новой колонке получилось меньше 3 актеров
+
+movies_cbs_tidy$cast = tolower(movies_cbs_tidy$cast)
+movies_cbs_tidy$cast = str_replace_all(movies_cbs_tidy$cast, " ", "")
+movies_cbs_tidy$cast_top_3 = str_extract_all(movies_cbs_tidy$cast,'^(\\S+?),(\\S+?),(\\S+?),')
+movies_cbs_tidy$cast_top_3 = sub(",$", "", movies_cbs_tidy$cast_top_3 )
+movies_cbs_tidy = movies_cbs_tidy %>% select(-cast) %>% filter(cast_top_3 != "character(0)") %>% distinct()
+movies_cbs_tidy = movies_cbs_tidy %>% unique()
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# На этом шаге оставлю только первого режиссера для каждого фильма. Для некоторых картин указано несколько режиссеров, но, разумеется, первым записывают главного из них, который, наряду с актерами главных ролей, является лицом фильма.
+
+# Алгоритм тот же, что и в чанке выше
+
+movies_cbs_tidy8 = movies_cbs_tidy %>% unnest(director = strsplit(director, "[|]"))
+movies_cbs_tidy9 = movies_cbs_tidy8 %>% group_by(movieId) %>% summarise(director=paste(director, collapse=","))
+movies_cbs_tidy = movies_cbs_tidy %>% select(-director)
+
+movies_cbs_tidy9$director = tolower(movies_cbs_tidy9$director)
+movies_cbs_tidy9$director = str_replace_all(movies_cbs_tidy9$director, " ", "")
+movies_cbs_tidy9$director = paste(movies_cbs_tidy9$director, ",")
+movies_cbs_tidy9$director = str_replace_all(movies_cbs_tidy9$director," ,",",")
+movies_cbs_tidy9$director_top_1 = str_extract_all(movies_cbs_tidy9$director,'^(\\S+?),')
+movies_cbs_tidy9$director_top_1 = sub(",$", "", movies_cbs_tidy9$director_top_1 )
+movies_cbs_tidy9 = movies_cbs_tidy9 %>% select(-director)
+
+movies_cbs_tidy = inner_join(movies_cbs_tidy9, movies_cbs_tidy)
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#Колонки cast и director приведены в надлежащий вид. Теперь нужно разбить по рядам актеров, перевести обе колонки в широкий формат, чтобы собрать наконец общий датасет. Работаю с кастом:
+  
+movies_cast = movies_cbs_tidy %>% separate_rows(cast_top_3) %>% select(movieId, cast_top_3) %>% distinct()
+movies_cast2 = movies_cast %>% group_by(cast_top_3) %>% summarise(n()) %>% filter(`n()` > 1)
+movies_cast = movies_cast %>% filter(cast_top_3 %in% movies_cast2$cast_top_3)
+# Фильтрацией убираю актёров, которые сыграли только в одном фильме, чтобы сократить количество переменных
+
+movies_cast = movies_cast %>% mutate(cast_v = 1) # колонка единиц для приведения к широкому формату
+movies_cast = movies_cast %>% group_by(movieId) %>% mutate(grouped_id = row_number()) %>% spread(cast_top_3, cast_v, fill = 0) %>% select(-grouped_id) # широкий формат "вручную"
+
+movies_cbs_tidy = inner_join(movies_cast, movies_cbs_tidy)
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# Работаю с режиссерами:
+
+# Алгоритм тот же, что и в чанке выше, за исключением фильтрации
+
+movies_director = movies_cbs_tidy %>% separate_rows(director_top_1) %>% select(movieId, director_top_1) %>% distinct()
+movies_director = movies_director %>% mutate(director_v = 1)
+movies_director = movies_director %>% group_by(movieId) %>% mutate(grouped_id = row_number()) %>% spread(director_top_1, director_v, fill = 0) %>% select(-grouped_id)
+
+movies_cbs_tidy = inner_join(movies_director, movies_cbs_tidy)
+
+data_main = movies_cbs_tidy %>% select(-cast_top_3, -director_top_1)
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# Подготовка датасета для рекомендательной системы
+
+# В общем датасете осталось слишком много дубликатов, поэтому строчкой ниже убираю их
+  data_main2 = data_main[!duplicated(data_main[ , c("movieId","original_title")]),]
+
+# Эмпирически обнаружил, что появились некоторые колонки в одну букву (вероятнее всего, это какие-то части от плохо записанных в датасете имен актеров)
+# На строчках 183-185 убираю их
+letters = c("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z" )
+data_main3 = names(data_main2)[!(names(data_main2) %in% letters)]
+data_main_subset = data_main2[, data_main3]
+rownames(data_main_subset) = data_main_subset$movieId
+data_main_subset = data_main_subset %>% select(-original_title)
+```
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# Косинусное расстояние:
+
+sim = lsa::cosine(t(as.matrix(data_main_subset)))
+```
+
+**Функция Content-based**
+
+<p align="justify">На вход принимает названия фильмов, которые пользователь посмотрел (больше одного), а также количество фильмов, которые он хочет получить в рекомендацию (от четырех, поскольку первые три фильма, которые выводятся - те же, что и введены пользователем; в shiny эта проблема нивелирована).</p>
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+for_system = movies_cbs %>% select(title, movieId)
+RecommendFilm = function(film, user_n){
+            searched = for_system %>% filter(title %in% film)
+            if (nrow(searched)==0) {
+                recommend = "The Lord of The Ring"
+            } else{
+                mostSimilar = head(sort(sim[,as.character(searched$movieId)], decreasing = T), n = user_n)
+                a = which(sim[,as.character(searched$movieId)] %in% mostSimilar, arr.ind = TRUE)
+                index = arrayInd(a, .dim = dim(sim[,as.character(searched$movieId)]))
+                result = rownames(sim)[index[,1]]
+                mostSimilar_2 = data.frame(movieId = as.numeric(result),
+                                           similar = sim[,as.character(searched$movieId)][index])
+                recommend = mostSimilar_2 %>% left_join(for_system) %>% select(movieId, title, similar) %>% arrange(-similar) %>% unique()
+            }
+            recommend
+        }
+```
+
+Пример рекомендации:
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+#RecommendFilm(film = c("Casino", "Four Rooms", "Disclosure"), user_n = 6)
+```
+
+**Shiny**
+
+>Ссылка на приложение:
+[Shiny on Google Drive](https://drive.google.com/drive/folders/1i7Nqjpgoo8sym6t_nfMNqktCwNgCqVtA?usp=sharing) </p>
+
+**Внутренняя пользовательская оценка для content-based системы**
+
+<p align="justify">Используя приложение shiny для рекомендации фильмов, представим что мы пользователь нашей системы и проверим, насколько наши  ожидания будут совпадать с результатами рекомендаций.
+
+Вводными данными в данном случае являются любимые фильмы пользователя, рекомендация будет предоставлять до 3х фильмов, наиболее похожим по характеристикам на любимые фильмы пользователя.
+
+Предположим, нашему пользователю нравятся боевики, такие как "Rush Hour", "Armageddon" и "The Getaway".
+
+Если бы мы были пользователем, мы бы ожидали, что наша система будет предлагать нам также боевики и близкие по жанру фильмы (триллер/приключения), приблизительно этого же времени (90-е), в создании которых могли учавствовать одни и те же люди. 
+
+Как видно из рекомендации, она выдаёт нам очень похожие фильмы. На первом месте по схожести находится боевик/триллер "The Bourne Supremacy", на втором драма/триллер "The Last Castle", на последнем боевик "Charlie's Angels". Все они начала 2000-х. В целом, эта рекомендация очень похожа на фильмы, которые нравятся пользователю, а значит система работает хорошо. </p>
+--------------
+
+# V. Построение рекомендательных систем - коллаборативная фильтрация
+### Построение рекомендательной системы по оценкам пользователей 
+
+<p align="justify"> %описание </p>
+
+```{r}
+load("~/data12.rda")
+
+# Приводим ID фильмов к одному формату
+movies12 = movies12 %>% rename(movieId = id)
+
+# Убираем дату оценки из базы данных, так как в рекомендации она использоваться не будет
+ratings12 = select(ratings12, -timestamp)
+
+# Приводим датасет к широкому формату
+rates = spread(ratings12, key = movieId, value = rating)
+
+# Удаляем данные про айди пользователей для построение матрицы
+rownames(rates) = rates$userId
+rates = select(rates, -userId)
+```
+
+```{r}
+# Преобразование таблицы данных в матрицу
+rates = as.matrix(rates)
+# Преобразование матрицы в realRatingMatrix
+r = as(rates, "realRatingMatrix")
+```
+
+```{r include = FALSE}
+### Для дальнейшего анализа определимся с тем, какое минимальное количество оценок для нас можно использовать для рекомендательной системы.
+# График по количеству оценок на фильм
+ggplot(data = data.frame(filmRate=colCounts(r))) + geom_histogram(aes(x=filmRate), binwidth = 5)
+# График по количеству оценок одного пользователя
+ggplot(data = data.frame(userRate=rowCounts(r))) + geom_histogram(aes(x=userRate), binwidth = 8)
+
+
+# Для начала возьмем минимальное количество оценок в 13 для каждого пользователя, а минимальное количество оценок у фильма - 20.
+
+ratings_movies <- r[rowCounts(r) > 20, colCounts(r) > 13]
+```
+
+```{r include = FALSE}
+### Рассмотрим распределение средних оценок пользователей.
+#Как мы видим, в среднем большинство пользователей выставляют сдержанные оценки от 3 до 4.5
+average_ratings_per_user <- rowMeans(ratings_movies)
+ggplot()+geom_histogram(aes(x=average_ratings_per_user)) +
+ggtitle("Распределение средних оценок пользователей")
+```
+
+```{r}
+### Все готово, запускаем коллаборативную фильтрацию и начинаем уже рекомендовать фильмы!
+#Разделим данные на тестовую и обучающую выборки. На обучающей построим модель, т.е. зададим общие принципы рекомендации, для пользователей из тестовой будем рекомендовать фильмы.
+
+set.seed(100)
+test_ind <- sample(1:nrow(ratings_movies), size = nrow(ratings_movies)*0.2)
+recc_data_train <- ratings_movies[-test_ind, ]
+recc_data_test <- ratings_movies[test_ind, ]
+
+# Строим рекомендательную систему методом, основанным на схожести оценок пользователей
+recc_model <- Recommender(data = recc_data_train, method = "UBCF")
+recc_model
+
+# Теперь для каждого пользователя из тестовой выборки у нас есть 6 рекомендованных фильмов. 
+recc_predicted <- predict(object = recc_model, newdata = recc_data_test, n = 6)
+recc_predicted
+```
+
+**Функция коллаборативной фильтрации**
+
+<p align="justify"> Оформим рекомендательную систему в виде функции. Всего у нас есть рекомендации для 30 пользователей. То есть в функцию можно подставлять любого пользователя от 1 до 30 как входной аргумент, после чего для введённого номера пользователя мы получим значение функции - рекомендации для этого пользователя (6 фильмов). </p>
+```{r}
+getFilms = function(i){
+recc_user <- recc_predicted@items[[i]]
+movies_user <- recc_predicted@itemLabels[recc_user]
+names_movies_user<- movies12$title[match(movies_user, movies12$movieId)]
+names_movies_user
+}
+```
+
+Проверим для 30го пользователя:
+```{r}
+getFilms(30)
+```
+
+
+** Внутренняя оценка коллаборативной фильтрации**
+
+**Система IBCF**
+
+Построим также модель, основанную на схожести самих фильмов, методом IBCF и проверим её качество. Как видно из метрик качества, ошибки для данной модели гораздо больше чем для модели, основанной на схожести оценок пользователей. Таким образом, модель UBCF лучше, а потому для рекомендации мы будем использовать её. 
+
+```{r}
+
+# Строим рекомендательную систему методом, основанным на схожести самих фильмов
+recc_model2 <- Recommender(data = recc_data_train, method = "IBCF")
+recc_model2
+
+# Теперь для каждого пользователя из тестовой выборки у нас есть 6 рекомендованных фильмов. 
+recc_predicted2 <- predict(object = recc_model2, newdata = recc_data_test, n = 6)
+recc_predicted2
+
+# Оцениваем качество 
+
+set.seed(100)
+eval_sets <- evaluationScheme(data = ratings_movies, 
+                              method = "split",
+                              train = 0.8, # доля тренировочной выборки
+                              given = 13, # минимальное количество оценок
+                              goodRating = 4) # минимальная оценка
+
+recc_predicted2 <- predict(object = recc_model2, newdata = getData(eval_sets, "known"), n = 6, type = "ratings")
+
+eval_acc <- calcPredictionAccuracy(x = recc_predicted2,
+                                         # predicted values
+                                         data = getData(eval_sets, "unknown"),
+                                         byUser = F) 
+eval_acc
+```
+
+
+** Проверим качество модели на конкретных примерах. **
+
+Проверим рекомендацию для пользователя с номером id 44958. Сперва посмотрим, какие фильмы понравились пользователю. Отберём фильмы с оценкой 5. 
+
+```{r}
+#выбираем только фильмы с оценкой 5 для этого пользователя 
+
+user1 = ratings12 %>% filter(userId == 44958 & rating == 5 )
+
+#только id фильмов
+user1$movieId
+
+source("~/extract_json.R")
+movies12$genres = str_replace_all(movies12$genres, fixed("'"), '"')
+movies_gen = extract_json2(df = movies12, col = "genres")
+
+#выведем названия фильмов и их жанры
+movie = movies_gen %>% filter(movieId %in% user1$movieId) %>% select(title, movieId, genres_sep)
+head(movie)
+
+```
+
+Теперь посмотрим, какую часть занимает каждый жанр среди этих фильмов, посчитав пропорцию. Выше всего пользователь оценивает фильмы, относящиеся к жанрам драмы и триллера. Таким образом, мы будем ожидать, что система будет рекомендовать нам фильмы похожих жанров. 
+
+```{r message=F, warning=FALSE}
+top5 = filter(ratings12, userId == 44958 & rating == 5) %>% 
+  top_n(5, rating) %>% inner_join(movies_gen, by = "movieId")
+
+user_genre = select(top5, genres_sep, movieId)
+user_genre %>% count(genres_sep) %>% arrange(-n) %>% mutate(prop = n/sum(n))
+```
+
+Эти фильмы порекомендовала пользователю система.
+
+```{r}
+recc_user <- recc_predicted@items[["44958"]]
+movies_user <- recc_predicted@itemLabels[recc_user]
+names_movies_user<- movies12$title[match(movies_user, movies12$movieId)]
+names_movies_user
+```
+
+Если посмотреть на предсказанные оценки, то несмотря на то, что в целом пользователь оценил бы их ниже чем максимум, все они всё равно достаточно высокие. 
+
+```{r}
+recc_predicted@ratings[["44958"]]
+```
+
+Проверим, есть ли реальные оценки у этих фильмов. К сожалению, их нет. 
+
+```{r}
+filter(ratings12, userId == 44958 & movieId %in% as.numeric(movies_user))
+```
+
+Теперь посмотрим на жанры предсказанных фильмов. В целом можно заметить, что в большинстве жанры предложенных фильмов совпадают с теми жанрами, которые высоко оценил пользователь. Это означает, что система работает хорошо, поскольку она предлагает фильмы, близкие к тем, которые пользователь оценил выше всего.
+
+```{r}
+pred = movies_gen %>% filter(movieId %in% movies_user)
+
+user_prediction = select(pred, genres_sep, movieId)
+user_prediction %>% count(genres_sep) %>% arrange(-n) %>% mutate(prop = n/sum(n))
+```
+
+Проверим также, совпадают ли высоко оцененные пользователем страны-производители с тем, фильмы каких стран им предлагает система. Отбираем страны фильмов, оцененных на 5. 
+
+```{r}
+user1 = ratings12 %>% filter(userId == 44958 & rating == 5 )
+
+#только id фильмов
+user1$movieId
+
+source("~/extract_json.R")
+movies12$production_countries = str_replace_all(movies12$production_countries, fixed("'"), '"')
+movies_com = extract_json2(df = movies12, col = "production_countries")
+
+#выведем названия фильмов и их жанры
+movie2 = movies_com %>% filter(movieId %in% user1$movieId) %>% select(title, movieId, production_countries_sep)
+head(movie2)
+```
+
+Посмотрим, сколько среди них каких стран. Особенно нашему пользователю нравятся фильмы из США. Если мы были пользователем, мы бы ожидали, что предложенные фильмы также могут быть из этой страны.
+
+```{r message=F, warning=FALSE}
+top5 = filter(ratings12, userId == 44958 & rating == 5) %>% 
+  top_n(5, rating) %>% inner_join(movies_com, by = "movieId")
+
+user_comp = select(top5, production_countries_sep, movieId)
+user_comp %>% count(production_countries_sep) %>% arrange(-n) %>% mutate(prop = n/sum(n))
+```
+
+Теперь посмотрим на страны предсказанных фильмов. Самую большую часть составляет США, то есть это предсказание совпадает с тем, какие фильмы нравятся пользователю. Мы ещё раз убедились, что система работает исправно.
+
+```{r}
+pred2 = movies_com %>% filter(movieId %in% movies_user)
+
+user_prediction = select(pred2, production_countries_sep, movieId)
+user_prediction %>% count(production_countries_sep) %>% arrange(-n) %>% mutate(prop = n/sum(n))
+```
+
+
+
+
+
+
+
+
+<p align="justify"> s </p>
+
+
+
+<p align="justify"> s </p>--------------
+
+
+<center>Data Science Minor 2019-2020</center>
