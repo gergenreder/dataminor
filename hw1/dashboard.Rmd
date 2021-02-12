@@ -1,0 +1,136 @@
+---
+title: "Korean Air dashboard"
+Author: "Константин Гергенредер, группа 3"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: cosmo
+    orientation: rows
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+```
+
+```{r}
+airline <- read_csv("~/shared/minor2_2019/1-Intro/data/airline_sub_3.csv")
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Количество отзывов о нашей фирме (Korean Air)
+
+```{r}
+airline5 = filter (airline, airline_name == "korean-air")
+rating <- length(airline5$airline_name)
+gauge(rating, min = 0, max = 156, gaugeSectors(
+  success = c(78,156), warning = c(50,78), danger = c(0, 50)
+))
+```
+<center> <font size="2">*(данные в сравнении с выборкой лучших фирм, график 3)*</font> </center>
+
+### Средний рейтинг всех фирм опроса
+
+```{r}
+airline3 = filter (airline, !is.na(overall_rating))
+rating <- round(mean(airline3$overall_rating), 2)
+gauge(rating, min = 0, max = 10, gaugeSectors(
+  success = c(0, 5), warning = c(6, 7), danger = c(8, 10)
+))
+```
+
+### Рейтинг нашей авиакомпании (Korean Air)
+
+```{r}
+airline4 = filter (airline3, airline_name == "korean-air")
+rating <- round(mean(airline4$overall_rating), 2)
+gauge(rating, min = 0, max = 10, gaugeSectors(
+  success = c(8, 10), warning = c(7,7), danger = c(0, 6)
+))
+```
+<center> <font size="2">*(данные в сравнении с выборкой лучших фирм, график 3)*</font> </center>
+
+Row {data-width=600, .no-padding}
+-----------------------------------------------------------------------
+
+### **График 1.** Зависимость оценки от места жительства
+
+```{r}
+airline <- read_csv("~/shared/minor2_2019/1-Intro/data/airline_sub_3.csv")
+airline= filter (airline, !is.na(author_country)) 
+airlineQuest1 = airline %>% group_by(author_country) %>% dplyr::summarize(country_number=n()) %>% arrange (!country_number) %>% top_n(5)
+
+airlineQuest1 = filter(airline, author_country == "Canada" | author_country == "Australia" | author_country == "Netherlands" | author_country == "United Kingdom" | author_country == "United States")
+airlineQuest1$author_country [ airlineQuest1$author_country == "Canada" ] <- "Канада"
+airlineQuest1$author_country [ airlineQuest1$author_country == "Australia" ] <- "Австралия" 
+airlineQuest1$author_country [ airlineQuest1$author_country == "Netherlands" ] <- "Недерланды" 
+airlineQuest1$author_country [ airlineQuest1$author_country == "United Kingdom" ] <- "Великобритания" 
+airlineQuest1$author_country [ airlineQuest1$author_country == "United States" ] <- "США" 
+q <- ggplot(airlineQuest1) +
+  geom_histogram(aes(x=overall_rating, fill = author_country), colour = "black", binwidth = 1.2) +
+  scale_fill_brewer (name="Гражданство страны:", palette = "Set2") +
+  theme_bw () +
+  xlab ("Оценка") +
+  ylab ("Количество оценки") +
+  ggtitle("Зависимость количиства каждой оценки \nот гражданства респондента")
+q
+```
+
+### **График 2.** Зависимость количества пассажиров от квартала
+
+```{r}
+airlineQuest2 = airline
+airlineQuest2$type_traveller [ airlineQuest2$type_traveller == "Business" ] <- "Бизнес"
+airlineQuest2$type_traveller [ airlineQuest2$type_traveller == "Couple Leisure" ] <- "Семейная пара" 
+airlineQuest2$type_traveller [ airlineQuest2$type_traveller == "FamilyLeisure" ] <- "Семья" 
+airlineQuest2$type_traveller [ airlineQuest2$type_traveller == "Solo Leisure" ] <- "Одинокий" 
+ggplot(airlineQuest2) +
+  geom_histogram(aes(x=quarter(date, with_year = FALSE, fiscal_start = 1), fill = type_traveller), color = "black", binwidth = 0.5)+
+  scale_fill_discrete(name = "Тип пассажира(ов)") +
+  theme_bw () +
+  xlab ("Номер квартала") +
+  ylab ("Количество перелётов") +
+  ggtitle("Количество перелётов по кварталам")
+```
+
+### **График3.** Рейтинг самых лучших фирм по двум критериям
+
+```{r}
+airlineQuest3 = airline %>%  filter(!is.na(value_money_rating), !is.na(overall_rating)) %>% group_by (airline_name) %>% summarise(mean_money = mean(value_money_rating), mean_overall = mean(overall_rating), airline_number=n() ) %>% filter (airline_number >= 15, mean_money >= 4, mean_overall >= 8)  %>% arrange(!airline_number) %>% top_n (6)
+#(str_replace(airlineQuest3$airline_name, "-", " "))
+
+  ggplot() +
+    geom_bar(data = airlineQuest3, aes(x = airline_name, y=mean_overall), colour = "black", fill = "lightblue", stat = "identity") +
+    geom_bar(data = airlineQuest3, aes(x = airline_name, y=mean_money), colour = "black", fill = "red", stat = "identity") +
+    coord_flip () +
+    ggtitle("Соотношение рейтинга цена/качество\nс общим рейтингом") +
+    ylab("Цена/качество и общий рейтинг") +
+    xlab("Название компании") +
+    theme_bw ()
+    
+```
+
+
+Row {}
+-----------------------------------------------------------------------
+
+### Общее количество записей в опросе
+```{r}
+valueBox("4595", color = "#993366", icon = "fa-table")
+```
+
+### Процент людей, рекомендующих нашу фирму
+
+```{r}
+procent2 = filter (airline, airline_name == "korean-air")
+procent = filter (airline, airline_name == "korean-air", recommended == 1)
+qq = round((length(procent$recommended) / length(procent2$recommended) * 100), 1)
+valueBox(qq, color = ifelse(qq < 80, "warning", "success"), icon = "fa-thumbs-o-up ")
+#при значении процента <80, график окрасится в красный цвет
+```

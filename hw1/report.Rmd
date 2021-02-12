@@ -1,0 +1,144 @@
+---
+title: 'Домашняя работа #1'
+author: '*Константин Гергенредер, группа номер 3*'
+date: "28.10.2019"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+<center> [![Alt text](https://i.imgur.com/CebjKkZ.png)](https://vk.com/dsminor2k18) </center>
+--------------
+```{r global, include = FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r, echo= FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+
+airline <- read_csv("~/shared/minor2_2019/1-Intro/data/airline_sub_3.csv")
+```
+## **Список сформулированных исследовательских вопросов:**
+#### 1. Влияет ли принадлежность к определённой стране на отзывы клиентов? Как отзываются о компаниях резиденты самых частолетающих стран?
+#### 2. Какой квартал года является самым популярным у пассажиров для перелёта?
+#### 3. Какие авиафирмы находятся в топе рейтинга и как их общий рейтинг соотносится с их оценкой по цене/качеству?
+
+> <p align="justify"> Представление итоговой работы для заказчика. В роли заказчика - **менеджмент авиакомпании**, соответственно, иследовательские вопросы сформулированы с учётом возможных интересов потенциального заказчика. </p>
+
+--------------
+## **Первый вопрос.** Влияет ли принадлежность к определённой стране на отзывы клиентов? Как отзываются о компаниях резиденты самых частолетающих стран?
+<p align="justify">Для каждой страны существуют разные понятия комфорта, уровня обслуживания, нужды в тех или иных вещах во время полёта. Причём после совершенно идентичного рейса представители разных стран могут оценить различные пункты работы фирмы по-разному. Именно поэтому в интересах менеджмента компании находится анализ существующих отзывов своих клиентов для формирования инструкций и дальнейшей стратегии повышения комфорта и удобства пассажиров. Результаты, которые можно получить из графика, могут стать индикатором для управляющего персонала авиакомпании по усовершенствованию обслуживания клиентов определенных регионов.
+</p>
+<center>
+```{r, echo=FALSE}
+airline <- read_csv("~/shared/minor2_2019/1-Intro/data/airline_sub_3.csv")
+airline= filter (airline, !is.na(author_country)) 
+airlineQuest1 = airline %>% group_by(author_country) %>% dplyr::summarize(country_number=n()) %>% arrange (!country_number) %>% top_n(5)
+
+airlineQuest1 = filter(airline, author_country == "Canada" | author_country == "Australia" | author_country == "Netherlands" | author_country == "United Kingdom" | author_country == "United States")
+airlineQuest1$author_country [ airlineQuest1$author_country == "Canada" ] <- "Канада"
+airlineQuest1$author_country [ airlineQuest1$author_country == "Australia" ] <- "Австралия" 
+airlineQuest1$author_country [ airlineQuest1$author_country == "Netherlands" ] <- "Недерланды" 
+airlineQuest1$author_country [ airlineQuest1$author_country == "United Kingdom" ] <- "Великобритания" 
+airlineQuest1$author_country [ airlineQuest1$author_country == "United States" ] <- "США" 
+q <- ggplot(airlineQuest1) +
+  geom_histogram(aes(x=overall_rating, fill = author_country), colour = "black", binwidth = 1.2) +
+  scale_fill_brewer (name="Гражданство страны:", palette = "Set2") +
+  theme (plot.background = element_rect(fill = "#e1ecf2"),
+  panel.grid.major = element_line(size = 0.25, linetype = 'solid',
+                                colour = "white"), 
+  panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+                                colour = "white"), 
+  panel.background = element_rect(fill = "#e1ecf2", colour = "#6D9EC1",
+                                size = 1.9, linetype = "solid"),
+  legend.background = element_rect(fill = "#e1ecf2"),
+  legend.key = element_rect(fill = "#6D9EC1", color = NA),)+
+  xlab ("Оценка") +
+  ylab ("Количество оценки") +
+  ggtitle("Зависимость количиства каждой оценки \nот гражданства респондента")
+q
+```
+</center>
+#### **Вывод по первому вопросу:**
+<p align="justify"> На основе созданного графика можно сделать вывод, что граждане *США* чаще всего оставляют самые низкие оценки, равно как и граждане *Канады*. В свою очередь резиденты *Великобритании* и *Австралии* являются менее привередливы к деятельности компании и в большинстве случаев оставляют положительные отзывы. Пассажиры из *Нидерланд* в основном оценивают полёт в районе 7,7-8.5 баллов, что является показателем достаточно удовлетворённого полёта. Я бы рекомендовал своему заказчику уделить особое внимание пассажирам из *США* и *Канады*, более углублённо проанализировать их жалобы и недовольства, для того чтобы повысить рейтинг своей компании.<p>
+
+
+
+--------------
+## **Второй вопрос.** Какой квартал года является самым популярным у пассажиров для перелёта?
+<p align="justify">Разные кварталы года приносят авиакомпаниям разную прибыль. Это может быть связано, к примеру, с праздничными днями или метеорологическими условиями локации. Основываясь на этой информации, управление заказчика сможет планировать уровень цен и всегда "держать руку на пульсе" спроса. Грамотный анализ данного графика позволит уменьшить стоимость в непопулярные кварталы и увеличить в пик популярности.</p>
+
+<center>
+```{r, echo= FALSE}
+airlineQuest2 = airline
+airlineQuest2$type_traveller [ airlineQuest2$type_traveller == "Business" ] <- "Бизнес"
+airlineQuest2$type_traveller [ airlineQuest2$type_traveller == "Couple Leisure" ] <- "Семейная пара" 
+airlineQuest2$type_traveller [ airlineQuest2$type_traveller == "FamilyLeisure" ] <- "Семья" 
+airlineQuest2$type_traveller [ airlineQuest2$type_traveller == "Solo Leisure" ] <- "Одинокий" 
+ggplot(airlineQuest2) +
+  geom_histogram(aes(x=quarter(date, with_year = FALSE, fiscal_start = 1), fill = type_traveller), color = "black", binwidth = 0.5)+
+  scale_fill_discrete(name = "Тип пассажира(ов)") +
+  theme (plot.background = element_rect(fill = "#e1ecf2"),
+    panel.grid.major = element_line(size = 0.25, linetype = 'solid',
+                                colour = "white"), 
+    panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+                                colour = "white"), 
+    panel.background = element_rect(fill = "#e1ecf2", colour = "#6D9EC1",
+                                size = 2, linetype = "solid"),
+    legend.background = element_rect(fill = "#e1ecf2"))+
+  xlab ("Номер квартала") +
+  ylab ("Количество перелётов") +
+  ggtitle("Количество перелётов по кварталам")
+```
+</center>
+#### **Вывод по второму вопросу:**
+<p align="justify"> На основе созданного графика можно сделать вывод, что 2 и 3 квартал являются наиболее популярными. К сожалению, собранные данные имеют заполненное поле type_traveller (тип пассажира) не для всех кварталов, поэтому мы получили такое распределение значений. Однако это не помешает нам сделать вывод о том, что в конце 1 квартала и в начале 4-го компания может менять ценовую политику ввиду различий спроса на авиаперевозки. Целесообразно незначительно увеличить цены в конце 1-го квартала и незначительно уменьшить их в начале 4-го. На основе типологии пассажиров, можно сделать вывод, что большинство пассажиров перелетают сами по себе. Однако в в 3 квартале семейные пары или семья с детьми перелетают гораздо чаще, чем во втором. Это может быть связано с порой летних каникул и летних отпусков. Соответственно, проведённый анализ выше может стать индикатором для дальнейших решений, принимаемых менеджментом фирмы. <p>
+
+
+
+--------------
+## **Третий вопрос.** Какие авиафирмы находятся в топе рейтинга и как их общий рейтинг соотносится с их оценкой по цене/качеству?
+<p align="justify">Любая успешная компания должна держать "руку на пульсе", когда речь заходит о деятельности конкурентов. Зачастую недооценённые фирмы-конкуренты добиваются больших успехов своими инновационными решениями в ведении бизнеса. Поэтому важно знать, какие фирмы составляют прямую конкуренцию авиакомпании, анализировать их рейтинг и предполагать причины таких показателей. Так как нас не интересуют искажённые данные, выборка данного исследования начинается от 15 отзывов. Совпадение высокой оценки с высоким показателем цены/качества подтверждает, что фирма смогла максимально эффективно распределить свои ресурсы и гарантировать низкие цены, подкреплённые достаточным уровнем сервиса. Именно поэтому целесообразно рассматривать те фирмы, которые обладают высокими показателями как общего рейтинга, так и показателя цены/качества. Для формирования столбцов используются медианные показатели всех оценок двух показателей рейтинга.</p>
+
+<center>
+```{r, echo= FALSE}
+airlineQuest3 = airline %>%  filter(!is.na(value_money_rating), !is.na(overall_rating)) %>% group_by (airline_name) %>% summarise(mean_money = mean(value_money_rating), mean_overall = mean(overall_rating), airline_number=n() ) %>% filter (airline_number >= 15, mean_money >= 4, mean_overall >= 8)  %>% arrange(!airline_number) %>% top_n (6)
+#(str_replace(airlineQuest3$airline_name, "-", " "))
+
+  ggplot() +
+    geom_bar(data = airlineQuest3, aes(x = airline_name, y=mean_overall), colour = "black", fill = "lightblue", stat = "identity") +
+    geom_bar(data = airlineQuest3, aes(x = airline_name, y=mean_money), colour = "black", fill = "red", stat = "identity") +
+    coord_flip () +
+    ggtitle("Соотношение рейтинга цена/качество\nс общим рейтингом") +
+    ylab("Цена/качество и общий рейтинг") +
+    xlab("Название компании") +
+    theme (plot.background = element_rect(fill = "#e1ecf2"),
+    panel.grid.major = element_line(size = 0.25, linetype = 'solid',
+                                colour = "white"), 
+    panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+                                colour = "white"), 
+    panel.background = element_rect(fill = "#e1ecf2", colour = "#6D9EC1",
+                                size = 2, linetype = "solid"),
+    legend.background = element_rect(fill = "#e1ecf2"))
+    
+```
+</center>
+#### **Вывод по третьему вопросу:**
+<p align="justify"> Проведя исследование доступных нам данных, я определил лучшие фирмы по высоким показателям общего рейтинга и рейтинга цены/качества. Как мы видим из графика, наиболее эффективными фирмами-конкурентами являются *garunda-indonesia* и *asiana-airlines*. Данное исследование может стать триггером для начала более глубокого анализа этих двух конкретных фирм. Я рекомендую заказчику обратить внимание на представленные авиакомпании и заказать более глубинное исследование.<p>
+--------------
+# Заключительный вывод проведённого анализа.
+<p align="justify">На основе проведённого анализа, представленного для управляющего совета авиакомпании, я бы хотел привести ряд рекомендаций для дальнейшего развития фирмы:
+
+* Уделять особое внимание пассажирам из *США* и *Канады*, ежегодно проводить опросы своих пассажиров и анализировать полученные даннные.
+* Уделять особое внимание пассажирам, путешествующих с семьей, так как они являются наиболее распространённым типом пассажиров.
+* Проводить анализ деятельности фирм-конкурентов, создавать инновационные решения для улучшения своего бизнеса.
+* Ежегодно составлять график распределения количество перелётов для мониторинга уровня спроса, составления цен и выполнения ежегодных планов продажи.
+* Ежегодно проводить глубинный анализ деятельности фирмы, усовершенствовать опросную форму.
+<p>
+--------------
+<center>Data Science Minor 2019-2020</center>
+
