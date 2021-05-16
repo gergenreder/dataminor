@@ -1,0 +1,337 @@
+---
+title: "Smart Vote 2.0"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(shiny) 
+library(dplyr)
+library(shinyWidgets)
+library(readxl)
+library(lsa)
+library(DT)
+
+
+dt <- read_xlsx("Itog.xlsx")
+
+names = dt$Партия
+names_df = select(dt,'party')
+names_range = names_df
+names_range$Num = c(1,4,9,12,14,13,6, 3,2,11,10,7,8,5)
+names_range = arrange(names_range, desc(-Num))
+names_range = names_range %>% dplyr::select(-Num)
+matrix = data.matrix(dt %>% select(`class1`:`class22`))
+colnames(matrix) <- NULL
+
+options(scipen = 999)
+
+
+themes=c('Развитие волонтерского движения',
+'Социальная поддержка пенсионеров',
+'Политика импортозамещения',          	
+'Экология',  	
+'Поддержка нынешнего курса президента',
+'Сохранение памяти СССР', 	
+'Текущие проблемы в экономике России', 	
+'Протестные акции',	
+'ЖКХ и благоустройство',
+'Поддержка семей с детьми',
+'Работа и трудоустройство',
+'Критика несистемной оппозиции',
+'Здравоохранение',  	
+'Цифровизация избирательного процесса',
+'Образование',
+'Коррупция',
+'Критика либеральных ценностей',
+'Внешняя политика'
+)
+
+ld=c(
+'Медведев Дмитрий', 
+'Миронов Сергей',
+'Нечаев Алексей',
+'Шайхутдинов Рифат',
+'Артамонов Олег',
+'Хвостов Руслан',
+'Бураков Владимир',
+'Зюганов Геннадий',
+'Жириновский Владимир',
+'Панфилов Анатолий',
+'Титов Борис',
+'Рыбаков Николай',
+'Журавлев Алексей',
+'Сурайкин Максим'
+)
+p=c(
+'48',
+'36',
+'46',
+'21',
+'52',
+'63',
+'34',
+'24',
+'22',
+'66',
+'32',
+'19',
+'32',
+'19'
+)
+
+pr=c(
+'- Слоган: "Мы верим в себя и в Россию!"
+
+Партия власти, имеющая большинство в Государственной Думе (335).
+Мест в региональных парламентах: 2957.
+Дата начала деятельности: 1999 г.
+Программа партии: https://er.ru/party/program',
+'- Слоган: "Патриоты! За правду! За справедливость!" В 2020 году произошло объединение трёх партий Справедливой России, За правду и Патриоты России.
+Дата начала деятельности: 2006 г.
+Партия имеет четвёртую по численности фракция в Государственной Думе (23).
+Мест в региональных парламентах: 230.
+Программа партии: https://spravedlivo.ru/7634910',
+'- Дата начала деятельности: 2020 г.
+Основатель Алексей Нечаев - учредитель компании Faberlic.
+Мест в региональных парламентах: 7.
+Программа партии: https://newpeople.ru/programm',
+'- Дата начала деятельности: 2012 г.
+Мест в Государственной Думе: 1.
+Мест в региональных парламентах: 6.
+Была создана Михаилом Прохоровым, российским миллиардером и кандидатом в президенты в 2012 г.
+Программа партии: http://праваяпартия.рф/3591',
+'- Слоган: "Возвращаем политику людям!"
+Вячеслав Макаров (сооснователь партии) является одним из разработчиков известной компьютерной игры World of Tanks.
+Дата начала деятельности: 2020 г.
+Программа партии: https://digitaldem.ru/dokumenty/platform/',
+'- Дата начала деятельности: 2019 г.
+Мест в региональных парламентах: 2.
+Программа партии: https://zaecology.ru/programma-partii/',
+'- Дата начала деятельности: 1997 г.
+Мест в региональных парламентах: 16
+Программа партии: https://pensioner.party/about/programma',
+'- Слоган: "Россия! Труд! Народовластие! Социализм!"
+Партия, имеющая вторую по численности фракцию в Государственной Думе (43).
+Мест в региональных парламентах: 449.
+Дата начала деятельности: 1903 г.
+Программа партии: https://kprf.ru/party/program',
+'- Партия, имеющая третью фракцию по численности в Государственной Думе (40).
+Мест в региональный парламентах: 320.
+Дата начала деятельности: 1989 г.
+Программа партии: https://minjust.gov.ru/ru/pages/programma-i-ustav/',
+'- Дата начала деятельности: 1993 г.
+Мест в региональных парламентах: 4.
+Программа партии: http://greenparty.ru/material/page/programma/',
+'- Дата начала деятельности: 2016.
+Мест в региональных парламентах: 8.
+Лидер партии Борис Титов, Уполномоченный при Президенте России по защите прав предпринимателей.
+Программа партии: https://rost.ru/about/programma-partii/', 
+'- Дата начала деятельности: 1993 г.
+Мест в региональных парламентах: 13.
+Программа партии: https://www.yabloko.ru/program',
+'- Мест в Государственной Думе: 1.
+Мест в региональных парламентах: 6.
+Основателем и неофициальным лидером является Дмитрий Рогозин, генеральный директор Роскосмоса
+Дата начала деятельности: 2003 г.
+Программа партии: http://www.rodina.ru/who',
+'- Мест в региональных парламентах: 23.
+Дата начала деятельности: 2009 г.
+Программа партии: http://komros.info/about/programma/'
+
+)
+
+```
+
+
+```{r echo = FALSE} 
+
+sidebarPanel(
+  
+selectizeInput(
+  'pr_v', 'Вы, в целом, сторонник протестного голосования? (Голосование принципиально против партии власти)', c("Да","Нет"),
+  options = list(
+    placeholder = 'Выберите ответ',
+    onInitialize = I('function() { this.setValue(""); }'))),
+
+selectizeInput(
+  'k_v', 'Готовы ли Вы голосовать за партию, которая поддержала поправки в Конституцию?', c("Да","Нет"),
+  options = list(
+    placeholder = 'Выберите ответ',
+    onInitialize = I('function() { this.setValue(""); }'))),
+
+selectizeInput(
+  'p_v', 'Готовы ли Вы голосовать за партию, которая поддержала пенсионную реформу?', c("Да","Нет"),
+  options = list(
+    placeholder = 'Выберите ответ',
+    onInitialize = I('function() { this.setValue(""); }'))),
+
+selectizeInput(
+  'kr_v', 'Готовы ли Вы голосовать за партию, которая поддержала присоединение Крыма?', c("Да","Нет"),
+  options = list(
+    placeholder = 'Выберите ответ',
+    onInitialize = I('function() { this.setValue(""); }'))),
+
+selectizeInput(
+  'themes', 'Каким направлениям деятельности, на Ваш взгляд, должна в первую очередь уделять внимание политическая партия в современной России? Выберите 5 тем', choices = themes,multiple = TRUE,
+  options = list(
+    maxItems = 5,
+    placeholder = 'Выберите темы',
+    onInitialize = I('function() { this.setValue(""); }')))
+    
+,
+
+
+splitLayout(
+actionBttn(
+   inputId = "submit",
+   label = "",
+   style = "fill", 
+    color = "primary",
+   icon("vote-yea", lib = "font-awesome"),
+   size='md',
+   block = TRUE,
+   no_outline=TRUE)
+
+)
+
+)
+
+```
+
+
+```{r echo = FALSE}
+
+
+user = eventReactive(input$submit,withProgress(message = 'Ищем подходящую партию', value = 100,{ req(input$themes != "",input$pr_v!= "",input$k_v!= "",input$p_v!= "",input$kr_v!= "") 
+  new_dt=dt
+  user_vec=c()
+  
+  if (input$pr_v == "Да"){ 
+      user_vec <- c(user_vec, 1)
+      new_dt=new_dt[new_dt[,5] == 0,]
+  }
+  else{
+      user_vec <- c(user_vec, 0)
+  }
+  
+
+  if (input$k_v == "Да"){ 
+      user_vec <- c(user_vec, 1)
+  }
+  else{
+      user_vec <- c(user_vec, 0)
+      new_dt=new_dt[new_dt[,4] == 0,]
+  }
+    
+
+  if (input$p_v == "Да"){ 
+      user_vec <- c(user_vec, 1)
+  }
+  else{
+      user_vec <- c(user_vec, 0)
+      new_dt=new_dt[new_dt[,2] == 0,]
+  }
+  
+
+  if (input$kr_v == "Да"){ 
+      user_vec <- c(user_vec, 1)
+  }
+  else{
+      user_vec <- c(user_vec, 0)
+      new_dt=new_dt[new_dt[,3] == 0,]
+  }
+  
+  themes_v=c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+  
+  sim_v=c()
+  
+  if(!is.null(input$themes)&length(input$themes)>=5){
+    for (i in input$themes){
+      id<-which(i == themes)
+      themes_v[id]=1
+    }
+       user_vec<-c(user_vec,themes_v)
+       
+       for (i in 1:length(names)){
+         sim_v=c(sim_v,cosine(matrix[i,],user_vec))
+         
+       }
+       print(sim_v)
+  }
+  else{
+    return(NULL)
+  }
+  
+  
+  res_df=data.frame('party'=names, 'leader'=ld,'Позитивность'= p,'addition'=pr,sim=sim_v)
+  
+  res_df = inner_join(res_df,new_dt,by='Партия')
+  
+  res_df=res_df[order(-res_df$sim),]
+  
+  result=head(res_df, 5)
+  
+  
+  result=result %>% select('party','leader',positiveness,'addition')
+  
+  
+    return(result)
+  }))
+  
+
+vars=reactiveValues(db=NULL) 
+observeEvent(input$submit, { 
+    
+      test=user()
+      if (!is.null(test)){
+        
+      vars$db=user()
+      }
+      else{
+        return(NULL)
+      }
+  }
+)
+
+```
+
+
+```{r echo = FALSE,warning=FALSE}
+
+
+mainPanel(
+
+renderUI({ req(input$submit,!is.null(vars$db))
+    flowLayout( renderDataTable(vars$db,rownames = FALSE))
+  
+  
+}),
+
+renderUI({ req(is.null(vars$db))
+    fluidRow( renderDataTable(names_range,rownames = FALSE,options = list(pageLength = 14)))
+  
+  
+}),
+
+
+renderUI({
+  
+  tagList(tags$h5("По умолчанию приложение показывает список партий, ранжированный по вероятности прохождения в Государственную думу. При подсчете вероятности учитывались: результаты социологических опросов, результаты региональных выборов и процент набранных голосов на выборах в 2016 году.
+                  После того, как Вы ответите на вопросы, расположенные слева, Вам будут доступны следующие характеристики топ-5 самых подходящих партий:"),
+br(),
+tags$h5("1. Позитивность партии - этот показатель показывает, насколько позитивно настроена партия в средствах массовой информации. Подсчеты производились на основании постов партии за последние полгода."),
+  br(),
+ tags$h5("2.Примечания - дополнительная информация о партии, которую предоставляют эксперты."),
+br(),
+  a(href ="https://docs.google.com/forms/d/1fs9uB2HUSegR_MGFsFZ9GNFrR1FSkHUz2oXJY3dm0JY/viewform?chromeless=1&edit_requested=true", "Оцените качество рекомендации в Google Form",target = "_blank")
+)
+})
+  
+)
+
+
+
+
+```
+
